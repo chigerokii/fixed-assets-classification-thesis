@@ -1,63 +1,66 @@
-# ВКР: многоклассовая классификация объектов основных средств
+# Классификация объектов основных средств методами машинного обучения
 
-🇷🇺 Русский · [🇬🇧 English](#-english)
+Моя выпускная работа в бакалавриате СПбГЭУ (2026, кафедра прикладной математики и экономико-математических методов). Делал на реальных данных ООО «НИИгазэкономика», компания выдала справку о том, что результаты работы представляют для неё практический интерес.
 
-**Задача.** По характеристикам объекта основных средств (эксплуатирующая организация, регион, срок эксплуатации, стоимость, основное свойство, его значение и единица измерения) автоматически определить тип объекта. Это 312 классов, от зданий и сетей до технологических установок. Перед моделированием нужно было исследовать структуру реестра, выделить группы похожих объектов и найти аномалии.
+[English version below](#english)
 
-**Данные.** Реестр основных средств инфраструктурных компаний: ~12,6 тыс. объектов, 383 наименования. ⚠️ **Данные конфиденциальны:** организации, регионы и округа обезличены, стоимость умножена на коэффициент, а сам датасет в репозиторий не включён.
+## Зачем это нужно
 
-**Формат.** Выпускная квалификационная работа, бакалавриат «Экономика», 2026.
+Дочерние общества заводят новые объекты основных средств каждое по-своему, без единого стандарта описания. Чтобы загрузить объект в 1С и посчитать стоимость укрупнённого объекта (компрессорной станции, ГРС и т. п.), каждому нужно вручную присвоить класс из корпоративного классификатора. Это долго, зависит от эксперта, и ошибка на этом шаге потом уходит в инвестиционную оценку.
 
-![Сравнение моделей](images/model_comparison.png)
+Задача: по характеристикам объекта автоматически предсказать его класс.
 
-## Что сделано
+![Процесс](images/task.png)
 
-1. **Предобработка:** обезличивание, заполнение 12,9% пропусков каскадной медианой по группам: от узких (свойство + организация + регион) к широким (только свойство). Остаток пропусков — 0,4%. Проверка мнимых дубликатов (объекты с одинаковыми признаками, но разными инвентарными номерами).
-2. **Разведочный анализ:** концентрация объектов по округам, регионам и организациям, проблема редких классов. Связи между признаками: Спирмен для числовых, **V Крамера** для категориальных.
-3. **Кластеризация смешанных данных:** DBSCAN и **HDBSCAN на матрице расстояний Gower** с подбором параметров по силуэту и доле шума. Визуализация через PCA → **t-SNE** с подбором perplexity и learning rate.
-4. **Поиск аномалий:** **Isolation Forest** с подбором гиперпараметров, анализ доли аномалий по кластерам.
-5. **Подготовка признаков:** преобразование Йео–Джонсона, отбор признаков по корреляции и **VIF**.
-6. **Классификация на 312 классов** со стратифицированным разбиением и сравнением способов балансировки: Random Oversampling, SMOTE, SMOTENC и собственный `GaussianNoiseSampler`. Перебор гиперпараметров для 10+ моделей: логистическая регрессия, SVM, KNN, дерево решений, **Random Forest**, Rotation Forest, Gradient Boosting, AdaBoost, CatBoost, нейросеть на Keras, а также AutoML (**Fedot**) как точка отсчёта.
+## Данные
 
-## Ключевые результаты
+12 659 объектов, у каждого: организация, регион, объект-родитель, основное свойство и его значение с единицей измерения, срок эксплуатации, стоимость. Целевая переменная — наименование по классификатору.
 
-| Модель | Accuracy (test) |
-|---|---|
-| **Random Forest** | **0,613** |
-| Rotation Forest | 0,606 |
-| Decision Tree | 0,564 |
-| Fedot (AutoML, baseline) | 0,550 (macro-F1 0,38, weighted-F1 0,56) |
-| SVM | 0,530 |
-| Keras MLP | 0,513 |
+Главная сложность — классов много и они очень неравномерные: часть встречается сотни раз, а 67 классов всего по одному разу. Плюс одинаковое оборудование описано по-разному, и классы пересекаются по смыслу.
 
-- Лучший результат у **Random Forest: 61% верных ответов среди 312 классов**. Случайное угадывание дало бы ~0,3%.
-- Ансамбли деревьев стабильно опережают линейные модели и бустинг на этих данных, а простой Random Oversampling работает не хуже SMOTE.
-- HDBSCAN с метрикой Gower выделил плотные группы похожих объектов, а редкие комбинации признаков попали в шум. Isolation Forest показал, что аномалии сосредоточены в редких кластерах.
+![Дисбаланс классов](images/imbalance.png)
 
-<img src="images/tsne_clusters_anomalies.png" width="600" alt="t-SNE: кластеры и аномалии">
+Данные конфиденциальные. Организации, регионы и объекты-родители заменены кодами, стоимость умножена на коэффициент, сам датасет здесь не выложен.
 
-## Ограничения и что дальше
+## Что делал
 
-- Macro-F1 заметно ниже accuracy: редкие классы распознаются плохо. Помогли бы иерархическая классификация (сначала группа объектов, затем тип) и объединение редких классов.
-- Модели с долгим обучением (Gradient Boosting, Fedot) не удалось глубоко настроить из-за вычислительных ресурсов.
+1. Предобработка: пропуски заполнял медианой внутри групп похожих объектов, привёл к одному написанию категории, проверил дубликаты.
+2. Разведочный анализ: распределения, Спирмен для числовых признаков, V Крамера для категориальных.
+3. Кластеризация HDBSCAN на расстоянии Gower (данные смешанные) и поиск аномалий через Isolation Forest. Из этого сделал новые признаки: метку кластера, редкость класса, аномальность объекта. Отбор по корреляции и VIF сократил признаки с 30 до 18.
+4. Сравнил десяток моделей: SVC, KNN, дерево, Random Forest, Rotation Forest, Extra Trees, Easy Ensemble, HistGradientBoosting, AdaBoost, нейросеть на Keras. Балансировку (oversampling, веса классов) и гиперпараметры подбирал под каждую модель.
+5. Перебрал три сценария, каждый сложнее предыдущего.
 
-## Стек
+## Результаты
 
-Python · pandas · scikit-learn · imbalanced-learn · HDBSCAN · gower · CatBoost · TensorFlow/Keras · Fedot · plotly · seaborn
+| Сценарий | Что менялось | Лучшая модель | Accuracy |
+|---|---|---|---|
+| 1 | базовый набор признаков | AdaBoost | 0,625 |
+| 2 | + кластеры, редкость, аномальность | Random Forest | 0,645 |
+| 3 | отдельная модель для каждой единицы измерения (м, м², м³, шт, прочие) | лучшая модель в каждой группе | **0,707** (средневзвешенная) |
+
+Больше всего помогло разбить задачу на части. Внутри одной единицы измерения объекты однороднее, а конкурирующих классов меньше. Для группы «шт» точность 0,83, для «прочих» 0,86, сложнее всего с протяжёнными объектами в метрах (0,52).
+
+![Результаты](images/results.png)
+
+Важность признаков и SHAP показали одно и то же: модель опирается на стоимость, техническое состояние объекта и его место в структуре данных.
+
+Экономический эффект: если модель размечает объекты, а человек только проверяет, трудозатраты на разметку массива снижаются с 840 до 414 чел.-ч, а затраты с 400 тыс. до 197 тыс. руб.
+
+![Пайплайн сценария 3](images/approach3.png)
+
+## Файлы
+
+- `notebooks/01_eda_and_first_experiments.ipynb` — первая версия: разведочный анализ, кластеризация, аномалии, первые модели на всех классах сразу.
+- `notebooks/02_final_pipeline.ipynb` — итоговый пайплайн из ВКР: три сценария и расчёт эффекта.
+
+Python, pandas, scikit-learn, imbalanced-learn, hdbscan, gower, CatBoost, SHAP, TensorFlow/Keras.
 
 ---
 
-## 🇬🇧 English
+## English
 
-**Bachelor's thesis: multi-class classification of fixed assets (312 classes)**
+My bachelor's thesis (St Petersburg State University of Economics, 2026), built on real fixed-asset data from NIIgazekonomika. The company issued a letter confirming the results are of practical interest to them.
 
-**Goal.** Predict the type of a fixed asset (312 classes) from its attributes: operator, region, age, cost, main property, its value and unit of measure. ~12.6k records. ⚠️ The data is confidential: it was anonymised and is not published.
+The task was to predict an asset's class in the corporate classifier from its attributes. The data had 12,659 assets and hundreds of heavily imbalanced classes, 67 of which appear only once. I used HDBSCAN on a Gower distance matrix and Isolation Forest to engineer cluster, rarity and anomaly features, then benchmarked around ten classifiers with tuned balancing.
 
-**What was done**
-- Cascading group-median imputation of missing values.
-- EDA with Spearman correlation and Cramér's V.
-- Clustering of mixed-type data with HDBSCAN on a Gower distance matrix, t-SNE visualisation and Isolation Forest anomaly detection.
-- Feature selection by correlation and VIF.
-- Benchmark of 10+ classifiers (Logistic Regression, SVM, KNN, trees, Random Forest, Rotation Forest, Gradient Boosting, AdaBoost, CatBoost, Keras MLP and the Fedot AutoML baseline) with ROS, SMOTE, SMOTENC and custom Gaussian-noise balancing.
-
-**Result.** Random Forest reached **0.613 test accuracy across 312 classes** (chance level ≈ 0.003). Tree ensembles outperformed linear models and boosting. Next steps: hierarchical classification to improve macro-F1 on rare classes.
+Splitting the task by unit of measure and training a separate model per group raised weighted accuracy from 0.625 to 0.707. The estimated effect is that manual labelling effort drops from 840 to 414 person-hours. The data is confidential and anonymised, so it is not included here.
