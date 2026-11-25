@@ -1,0 +1,15 @@
+pandas
+numpy
+scipy
+scikit-learn
+seaborn
+matplotlib
+plotly
+gower
+hdbscan
+imbalanced-learn
+category_encoders
+catboost
+tensorflow
+fedot
+jupyter
